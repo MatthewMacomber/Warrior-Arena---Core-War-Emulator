@@ -1,0 +1,220 @@
+'' Warrior Arena Game - Prototype Arena (CoreWar Emulator)
+'' By DaCodeDude
+TextWindow.Title = "Warrior Arena - Alpha 0.0.3"
+TextWindow.WriteLine("Warrior Arena - Alpha 0.0.3 (CoreWar Emulator)")
+TextWindow.Pause()
+
+'' Not Implemented Yet:
+'' Hard core players don't need or use this anyways :P
+'' warrior1 private memory
+''warrior1priv[1] = ""
+''warrior1priv[2] = ""
+''warrior1priv[3] = ""
+''warrior1priv[4] = ""
+
+'' Memory/Arena Size:
+memorySize = 100
+
+dir = Program.Directory
+
+TextWindow.WriteLine("Warrior Loading:")
+'' Open Warrior1 - Replaced with input via Arguments.
+''warrior1file = "C:\WarriorArena\warriors\warrior1.txt"
+
+'' Opens test warriors for program testing and debugging, or just for basic game demo.
+If (warrior1file = "") Then
+  warrior1file = dir + "\warriors\warrior1.txt"
+EndIf
+warrior1code = ""
+filelength = 0
+
+'' Load each line of warrior 1's code into temporary array
+thisLine = File.ReadLine(warrior1file, 1)
+While (thisLine <> "End")
+  filelength = filelength + 1
+  warrior1code[filelength] = thisLine
+  thisLine = File.ReadLine(warrior1file, filelength + 1)
+EndWhile
+
+'' Check warrior 1 data [Debug, 2 lines]
+TextWindow.WriteLine("Warrior 1: " + warrior1code)
+TextWindow.WriteLine("")
+
+'' Get warrior 1's # of commands
+warrior1length = Array.GetItemCount(warrior1code)
+
+'' Verify # of commands in warrior 1 [Debug, 2 lines]
+TextWindow.WriteLine(warrior1length)
+TextWindow.WriteLine("")
+
+
+'' Create memory Arena
+warrior1startpoint = 1
+
+'' Verify startpoint for warrior 1 [Debug, 2 lines]
+TextWindow.WriteLine("Warrior 1 start point: " + warrior1startpoint + ".")
+TextWindow.WriteLine("")
+
+'' Load warrior 1 commands into memory array from its array.
+tempnum = 0
+While (tempnum <> warrior1length)
+  tempnum = tempnum + 1
+  memory[tempnum] = warrior1code[tempnum]
+EndWhile
+
+'' Load rest of memory
+While (tempnum <> memorySize)
+  tempnum = tempnum + 1
+  memory[tempnum] = "DAT 0, 0"
+EndWhile
+
+'' Verify memory [Debug, 2 lines]
+TextWindow.WriteLine(memory)
+TextWindow.WriteLine("")
+
+'' Begin the running of the Virtual Memory and Code Interpreter.
+percycle = 500 '' To be customizable as to run game at multiple speeds. i.e. for watching a warrior for debugging/testing or running fast for quick tournement runs.
+maxnumcycles = 1000 '' Maximum number of cycles a round, also customizable.
+numcycles = 0
+warrior1exec = warrior1startpoint '' warrior1exec is the next execution point, here is initializes as the start point of warrior 1.
+'' Remember, warrior1startpoint is also the warrior's program execution start point.
+While (numcycles <> maxnumcycles)
+  warrior1step = memory[warrior1exec] '' Load warrior 1 command from memory array.
+  '' Verify each command to run [Debug, 1 line]
+  TextWindow.WriteLine(warrior1step)
+  
+  ExecWarrior1Command()
+  numcycles = numcycles + 1
+  warrior1exec = warrior1exec + 1 '' Move to ExecWarrior1Command sub once more commands are implemented.
+  '' Verify memory [Debug, 3 lines]
+  TextWindow.WriteLine(memory)
+  TextWindow.WriteLine("")
+  TextWindow.Pause()
+EndWhile
+
+Sub ExecWarrior1Command
+  '' Find command and execute instruction relating to the command. Command modifiers and other non-math related commands are not yet implemented.
+  code = Text.GetSubText(warrior1step, 1, 3)
+  ABFetch = warrior1step
+  If (code = "DAT") Then '' Check for process destruction command.
+    winlose = "Warrior 1 died"
+  ElseIf (code = "NOP") Then '' Check for do nothing command.
+    '' Does nothing except let the execution of warrior continue to the next address.
+  ElseIf (code = "ADD") Then '' Check for varriable adding command.
+    ADD()
+  ElseIf (code = "SUB") Then '' Check for variable subtracting command.
+    SUBT()
+  ElseIf (code = "MUL") Then '' Check for variable muliplying command.
+    MUL()
+  ElseIf (code = "DIV") Then '' Check for variable dividing command.
+    DIV()
+  Else '' Catchall for unkown data
+    TextWindow.WriteLine("Memory Array Error: Incompatible Data: '" + warrior1step + "'")
+    TextWindow.WriteLine("Error Causes: (Incorrect Warrior Code) or (Program Error).")
+  EndIf
+  TextWindow.Pause()
+EndSub
+
+Sub GetABValues
+  '' Get the AValue and the BValue, also check for Type modifiers (*, #, @, etc...) for each value.
+  '' Does not have Type modifiers yet.
+  AValue = ""
+  BValue = ""
+  i = 0
+  varloc = 5
+  '' AValue retrieve.
+  While (i <> 1)
+    If (Text.GetSubText(ABFetch, varloc, 1) = ",") Then
+      i = 1
+    Else
+      AValue =  Text.Append(AValue, Text.GetSubText(ABFetch, varloc, 1))
+    EndIf
+    varloc = varloc + 1
+  EndWhile
+  
+  i = 0
+  varloc = varloc + 1
+  '' BValue retrieve.
+  While (i <> 1)
+    If (Text.GetSubText(ABFetch, varloc, 1) = "")Then
+      i = 1
+    Else
+      BValue = Text.Append(BValue, Text.GetSubText(ABFetch, varloc, 1))
+    EndIf
+    varloc = varloc + 1
+  EndWhile
+EndSub
+
+Sub EditAB
+  '' Edit A or B value at given address.
+  TempData = ""
+  EditAddress = memory[warrior1exec + Btemp]
+  If (ABEdit[1] = "a") Then
+    '' Edit AValue.
+  Else
+    '' Edit BValue.
+    i = 0
+    readLoc = 1
+    While (i <> 1)
+      If (Text.GetSubText(EditAddress, readLoc, 1) = ",") Then
+        i = 1
+      Else
+        TempData = Text.Append(TempData, Text.GetSubText(EditAddress, readLoc, 1))
+      EndIf
+      readLoc = readLoc + 1
+    EndWhile
+  EndIf
+EndSub
+
+Sub ADD
+  '' Add command function.
+  GetABValues()
+  Atemp = AValue
+  Btemp = BValue
+  ABFetch = memory[warrior1exec + Btemp]
+  GetABValues()
+  ABEdit[1] = "b"
+  ABEdit[2] = BValue + Atemp
+  EditAB()
+EndSub
+
+Sub SUBT
+  '' Subtract command function
+  GetABValues()
+  Atemp = AValue
+  Btemp = BValue
+  ABFetch = memory[warrior1exec + Btemp]
+  GetABValues()
+  ABEdit[1] = "b"
+  ABEdit[2] = BValue - Atemp
+  EditAB()
+EndSub
+
+Sub MUL
+  '' Multiply command function.
+  GetABValues()
+  Atemp = AValue
+  Btemp = BValue
+  ABFetch = memory[warrior1exec + Btemp]
+  GetABValues()
+  ABEdit[1] = "b"
+  ABEdit[2] = BValue * Atemp
+  EditAB()
+EndSub
+
+Sub DIV
+  '' Divide command function.
+  GetABValues()
+  Atemp = AValue
+  Btemp = BValue
+  If (Atemp <> 0) Then
+    ABFetch = memory[warrior1exec + Btemp]
+    GetABValues()
+    ABEdit[1] = "b"
+    ABEdit[2] = BValue / Atemp
+  Else
+    ABEdit[1] = "b"
+    ABEdit[2] = 0
+  EndIf
+  EditAB()
+EndSub
