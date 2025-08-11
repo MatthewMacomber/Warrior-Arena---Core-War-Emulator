@@ -4,63 +4,111 @@ TextWindow.Title = "Warrior Arena - Alpha 0.0.3"
 TextWindow.WriteLine("Warrior Arena - Alpha 0.0.3 (CoreWar Emulator)")
 TextWindow.Pause()
 
-'' Not Implemented Yet:
-'' Hard core players don't need or use this anyways :P
-'' warrior1 private memory
-''warrior1priv[1] = ""
-''warrior1priv[2] = ""
-''warrior1priv[3] = ""
-''warrior1priv[4] = ""
+numWarriors = 0
+maxWarriors = 10 ''Max # of warriors that can be loaded into the arena.
+
+'' Warrior Data Arrays
+warrior_code = ""
+warrior_length = ""
+warrior_start_point = ""
+warrior_exec_pointer = ""
+warrior_alive = ""
 
 '' Memory/Arena Size:
-memorySize = 100
+memorySize = 200
 
 dir = Program.Directory
+warrior_dir = dir + "\warriors\"
 
-TextWindow.WriteLine("Warrior Loading:")
-'' Open Warrior1 - Replaced with input via Arguments.
-''warrior1file = "C:\WarriorArena\warriors\warrior1.txt"
+TextWindow.WriteLine("Loading Warriors from: " + warrior_dir)
 
-'' Opens test warriors for program testing and debugging, or just for basic game demo.
-If (warrior1file = "") Then
-  warrior1file = dir + "\warriors\warrior1.txt"
-EndIf
-warrior1code = ""
-filelength = 0
+For i = 1 To maxWarriors
+  If (File.Exists(warrior_dir + "warrior" + i + ".txt")) Then
+    numWarriors = i
+    warrior_alive[i] = "True"
 
-'' Load each line of warrior 1's code into temporary array
-thisLine = File.ReadLine(warrior1file, 1)
-While (thisLine <> "End")
-  filelength = filelength + 1
-  warrior1code[filelength] = thisLine
-  thisLine = File.ReadLine(warrior1file, filelength + 1)
-EndWhile
+    warrior_file = warrior_dir + "warrior" + i + ".txt"
 
-'' Check warrior 1 data [Debug, 2 lines]
-TextWindow.WriteLine("Warrior 1: " + warrior1code)
-TextWindow.WriteLine("")
+    filelength = 0
+    thisLine = File.ReadLine(warrior_file, 1)
+    While (Text.ConvertToUpperCase(thisLine) <> "END")
+      filelength = filelength + 1
+      warrior_code[i][filelength] = thisLine
+      thisLine = File.ReadLine(warrior_file, filelength + 1)
+    EndWhile
 
-'' Get warrior 1's # of commands
-warrior1length = Array.GetItemCount(warrior1code)
+    warrior_length[i] = filelength
+    TextWindow.WriteLine("Warrior " + i + " loaded with " + warrior_length[i] + " instructions.")
+  Else
+    Goto warriors_loaded
+  EndIf
+EndFor
+warriors_loaded:
 
-'' Verify # of commands in warrior 1 [Debug, 2 lines]
-TextWindow.WriteLine(warrior1length)
-TextWindow.WriteLine("")
+TextWindow.WriteLine(numWarriors + " warriors loaded.")
+TextWindow.Pause()
+TextWindow.Clear()
 
+'' Create memory Arena and place warriors
+For i = 1 To numWarriors
+  '' Find a random, non-overlapping start point
+  is_placed = "False"
+  While (is_placed = "False")
+    is_valid_placement = "True"
+    ' Get a potential start point
+    temp_start = Math.GetRandomNumber(memorySize)
 
-'' Create memory Arena
-warrior1startpoint = 1
+    ' Rule 1: Prevent placement that wraps around the arena
+    If (temp_start + warrior_length[i] > memorySize) Then
+      is_valid_placement = "False"
+    EndIf
 
-'' Verify startpoint for warrior 1 [Debug, 2 lines]
-TextWindow.WriteLine("Warrior 1 start point: " + warrior1startpoint + ".")
-TextWindow.WriteLine("")
+    ' Rule 2: Check for overlaps with already placed warriors
+    If (is_valid_placement = "True") Then
+      new_start = temp_start
+      new_end = temp_start + warrior_length[i]
 
-'' Load warrior 1 commands into memory array from its array.
-tempnum = 0
-While (tempnum <> warrior1length)
-  tempnum = tempnum + 1
-  memory[tempnum] = warrior1code[tempnum]
-EndWhile
+      For j = 1 To (i - 1)
+        other_start = warrior_start_point[j]
+        other_end = other_start + warrior_length[j]
+
+        ' Robust overlap check: (StartA < EndB) and (EndA > StartB)
+        If (new_start < other_end And new_end > other_start) Then
+          is_valid_placement = "False"
+        EndIf
+      EndFor
+    EndIf
+
+    ' If placement is valid, lock it in
+    If (is_valid_placement = "True") Then
+      warrior_start_point[i] = temp_start
+      warrior_exec_pointer[i] = temp_start
+      is_placed = "True"
+    EndIf
+  EndWhile
+
+  TextWindow.WriteLine("Warrior " + i + " starting at " + warrior_start_point[i])
+EndFor
+
+TextWindow.Pause()
+
+'' Initialize memory to all DAT 0, 0
+For i = 1 To memorySize
+  memory[i] = "DAT 0, 0"
+EndFor
+
+'' Load warrior code into memory
+For i = 1 To numWarriors
+  start = warrior_start_point[i]
+  For j = 1 To warrior_length[i]
+    address = start + j - 1
+    ' Wrap address if it goes past memory size
+    If (address > memorySize) Then
+      address = address - memorySize
+    EndIf
+    memory[address] = warrior_code[i][j]
+  EndFor
+EndFor
 
 '' Load rest of memory
 While (tempnum <> memorySize)
@@ -73,62 +121,90 @@ TextWindow.WriteLine(memory)
 TextWindow.WriteLine("")
 
 '' Begin the running of the Virtual Memory and Code Interpreter.
-percycle = 500 '' To be customizable as to run game at multiple speeds. i.e. for watching a warrior for debugging/testing or running fast for quick tournement runs.
-maxnumcycles = 1000 '' Maximum number of cycles a round, also customizable.
+percycle = 500 '' To be customizable as to run game at multiple speeds.
+maxnumcycles = 2000 '' Maximum number of cycles a round.
 numcycles = 0
-warrior1exec = warrior1startpoint '' warrior1exec is the next execution point, here is initializes as the start point of warrior 1.
-'' Remember, warrior1startpoint is also the warrior's program execution start point.
-While (numcycles <> maxnumcycles)
-  warrior1step = memory[warrior1exec] '' Load warrior 1 command from memory array.
-  '' Verify each command to run [Debug, 1 line]
-  TextWindow.WriteLine(warrior1step)
+current_warrior = 1
+warriors_alive_count = numWarriors
+
+While (numcycles < maxnumcycles And warriors_alive_count > 1)
+  If (warrior_alive[current_warrior] = "True") Then
+    exec_ptr = warrior_exec_pointer[current_warrior]
+    instruction = memory[exec_ptr]
+
+    '' For debugging
+    'TextWindow.WriteLine("Cycle " + numcycles + ", Warrior " + current_warrior + " at " + exec_ptr + ": " + instruction)
+
+    ExecWarriorCommand()
+
+    '' Check if warrior died
+    If (winlose <> "") Then
+      warrior_alive[current_warrior] = "False"
+      warriors_alive_count = warriors_alive_count - 1
+      TextWindow.WriteLine(winlose)
+      winlose = ""
+    EndIf
+
+    'TextWindow.Pause()
+  EndIf
   
-  ExecWarrior1Command()
-  numcycles = numcycles + 1
-  '' Verify memory [Debug, 3 lines]
-  TextWindow.WriteLine(memory)
-  TextWindow.WriteLine("")
-  TextWindow.Pause()
+  '' Move to the next warrior
+  current_warrior = current_warrior + 1
+  If (current_warrior > numWarriors) Then
+    current_warrior = 1
+    numcycles = numcycles + 1
+    'TextWindow.WriteLine("--- End of Cycle " + (numcycles-1) + " ---")
+  EndIf
 EndWhile
 
-Sub ExecWarrior1Command
-  '' Find command and execute instruction relating to the command. Command modifiers and other non-math related commands are not yet implemented.
-  code = Text.GetSubText(warrior1step, 1, 3)
-  ABFetch = warrior1step
-  If (code = "DAT") Then '' Check for process destruction command.
-    winlose = "Warrior 1 died"
-  ElseIf (code = "NOP") Then '' Check for do nothing command.
-    warrior1exec = warrior1exec + 1
-    address_to_wrap = warrior1exec
-    WrapAddress()
-    warrior1exec = wrapped_address
-  ElseIf (code = "ADD") Then '' Check for varriable adding command.
-    ADD()
-  ElseIf (code = "SUB") Then '' Check for variable subtracting command.
-    SUB()
-  ElseIf (code = "MUL") Then '' Check for variable muliplying command.
-    MUL()
-  ElseIf (code = "DIV") Then '' Check for variable dividing command.
-    DIV()
-  ElseIf (code = "MOV") Then '' Check for move command.
-    MOV()
-  ElseIf (code = "JMP") Then '' Check for jump command.
-    JMP()
-  ElseIf (code = "JMZ") Then '' Check for jump if zero command.
-    JMZ()
-  ElseIf (code = "JMG") Then '' Check for jump if greater command.
-    JMG()
-  ElseIf (code = "DJN") Then '' Check for decrement and jump if not zero command.
-    DJN()
-  ElseIf (code = "SEQ") Then '' Check for skip if equal command.
-    SEQ()
-  ElseIf (code = "SNE") Then '' Check for skip if not equal command.
-    SNE()
-  Else '' Catchall for unkown data
-    TextWindow.WriteLine("Memory Array Error: Incompatible Data: '" + warrior1step + "'")
-    TextWindow.WriteLine("Error Causes: (Incorrect Warrior Code) or (Program Error).")
+'' Announce winner
+For i = 1 To numWarriors
+  If (warrior_alive[i] = "True") Then
+    TextWindow.WriteLine("Warrior " + i + " is the winner!")
+    Goto end_game
   EndIf
-  TextWindow.Pause()
+EndFor
+TextWindow.WriteLine("The game is a draw!")
+end_game:
+
+
+Sub ExecWarriorCommand
+  '' Find command and execute instruction.
+  code = Text.GetSubText(instruction, 1, 3)
+  ABFetch = instruction
+
+  If (code = "DAT") Then
+    winlose = "Warrior " + current_warrior + " died by executing DAT"
+  ElseIf (code = "NOP") Then
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
+    address_to_wrap = warrior_exec_pointer[current_warrior]
+    WrapAddress()
+    warrior_exec_pointer[current_warrior] = wrapped_address
+  ElseIf (code = "ADD") Then
+    ADD()
+  ElseIf (code = "SUB") Then
+    SUB()
+  ElseIf (code = "MUL") Then
+    MUL()
+  ElseIf (code = "DIV") Then
+    DIV()
+  ElseIf (code = "MOV") Then
+    MOV()
+  ElseIf (code = "JMP") Then
+    JMP()
+  ElseIf (code = "JMZ") Then
+    JMZ()
+  ElseIf (code = "JMG") Then
+    JMG()
+  ElseIf (code = "DJN") Then
+    DJN()
+  ElseIf (code = "SEQ") Then
+    SEQ()
+  ElseIf (code = "SNE") Then
+    SNE()
+  Else
+    winlose = "Warrior " + current_warrior + " died by executing invalid code: '" + instruction + "'"
+  EndIf
 EndSub
 
 Sub GetABValues
@@ -202,7 +278,7 @@ Sub ResolveAOperand
     A_ImmediateValue = AValue
   Else
     ' It's an address mode
-    address_to_wrap = warrior1exec + AValue
+    address_to_wrap = warrior_exec_pointer[current_warrior] + AValue
     WrapAddress()
     base_addr = wrapped_address
 
@@ -233,7 +309,7 @@ Sub ResolveBOperand
     B_IsImmediate = "True"
     B_ImmediateValue = BValue
   Else
-    address_to_wrap = warrior1exec + BValue
+    address_to_wrap = warrior_exec_pointer[current_warrior] + BValue
     WrapAddress()
     base_addr = wrapped_address
 
@@ -272,14 +348,14 @@ Sub SEQ
   destInstr = memory[B_Address]
 
   If (sourceInstr = destInstr) Then
-    warrior1exec = warrior1exec + 2
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 2
   Else
-    warrior1exec = warrior1exec + 1
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
   EndIf
 
-  address_to_wrap = warrior1exec
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub SNE
@@ -297,14 +373,14 @@ Sub SNE
   destInstr = memory[B_Address]
 
   If (sourceInstr <> destInstr) Then
-    warrior1exec = warrior1exec + 2
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 2
   Else
-    warrior1exec = warrior1exec + 1
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
   EndIf
 
-  address_to_wrap = warrior1exec
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub DJN
@@ -328,7 +404,7 @@ Sub DJN
   ' Update the instruction in memory
   ABEdit[1] = "b"
   ABEdit[2] = new_B_val
-  Btemp = B_Address - warrior1exec ' EditAB needs the offset
+  Btemp = B_Address - warrior_exec_pointer[current_warrior] ' EditAB needs the offset
   EditAB()
 
   ' Conditional jump
@@ -344,15 +420,15 @@ Sub DJN
       GetABValues()
       offset = BValue
     EndIf
-    warrior1exec = warrior1exec + offset
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + offset
   Else
     ' Condition not met, just advance to next instruction
-    warrior1exec = warrior1exec + 1
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
   EndIf
 
-  address_to_wrap = warrior1exec
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub WrapAddress
@@ -374,7 +450,7 @@ Sub EditAB
   '' ABEdit[1]: "a" or "b" to specify which field to edit.
   '' ABEdit[2]: the new value for the field.
 
-  address_to_wrap = warrior1exec + Btemp
+  address_to_wrap = warrior_exec_pointer[current_warrior] + Btemp
   WrapAddress()
   targetAddress = wrapped_address
 
@@ -432,13 +508,13 @@ Sub ADD
   ' Update dest
   ABEdit[1] = "b"
   ABEdit[2] = newValue
-  Btemp = B_Address - warrior1exec ' EditAB needs the offset
+  Btemp = B_Address - warrior_exec_pointer[current_warrior] ' EditAB needs the offset
   EditAB()
 
-  warrior1exec = warrior1exec + 1
-  address_to_wrap = warrior1exec
+  warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub SUB
@@ -474,13 +550,13 @@ Sub SUB
   ' Update dest
   ABEdit[1] = "b"
   ABEdit[2] = newValue
-  Btemp = B_Address - warrior1exec
+  Btemp = B_Address - warrior_exec_pointer[current_warrior]
   EditAB()
 
-  warrior1exec = warrior1exec + 1
-  address_to_wrap = warrior1exec
+  warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub MUL
@@ -516,13 +592,13 @@ Sub MUL
   ' Update dest
   ABEdit[1] = "b"
   ABEdit[2] = newValue
-  Btemp = B_Address - warrior1exec
+  Btemp = B_Address - warrior_exec_pointer[current_warrior]
   EditAB()
 
-  warrior1exec = warrior1exec + 1
-  address_to_wrap = warrior1exec
+  warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub DIV
@@ -564,13 +640,13 @@ Sub DIV
   ' Update dest
   ABEdit[1] = "b"
   ABEdit[2] = newValue
-  Btemp = B_Address - warrior1exec
+  Btemp = B_Address - warrior_exec_pointer[current_warrior]
   EditAB()
 
-  warrior1exec = warrior1exec + 1
-  address_to_wrap = warrior1exec
+  warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub MOV
@@ -599,10 +675,10 @@ Sub MOV
   ' Perform the move
   memory[B_Address] = sourceInstr
 
-  warrior1exec = warrior1exec + 1
-  address_to_wrap = warrior1exec
+  warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub JMP
@@ -623,10 +699,10 @@ Sub JMP
     offset = BValue
   EndIf
 
-  warrior1exec = warrior1exec + offset
-  address_to_wrap = warrior1exec
+  warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + offset
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub JMZ
@@ -658,15 +734,15 @@ Sub JMZ
       GetABValues()
       offset = BValue
     EndIf
-    warrior1exec = warrior1exec + offset
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + offset
   Else
     ' Condition not met, just advance to next instruction
-    warrior1exec = warrior1exec + 1
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
   EndIf
 
-  address_to_wrap = warrior1exec
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
 
 Sub JMG
@@ -698,13 +774,13 @@ Sub JMG
       GetABValues()
       offset = BValue
     EndIf
-    warrior1exec = warrior1exec + offset
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + offset
   Else
     ' Condition not met, just advance to next instruction
-    warrior1exec = warrior1exec + 1
+    warrior_exec_pointer[current_warrior] = warrior_exec_pointer[current_warrior] + 1
   EndIf
 
-  address_to_wrap = warrior1exec
+  address_to_wrap = warrior_exec_pointer[current_warrior]
   WrapAddress()
-  warrior1exec = wrapped_address
+  warrior_exec_pointer[current_warrior] = wrapped_address
 EndSub
