@@ -85,7 +85,6 @@ While (numcycles <> maxnumcycles)
   
   ExecWarrior1Command()
   numcycles = numcycles + 1
-  warrior1exec = warrior1exec + 1 '' Move to ExecWarrior1Command sub once more commands are implemented.
   '' Verify memory [Debug, 3 lines]
   TextWindow.WriteLine(memory)
   TextWindow.WriteLine("")
@@ -99,15 +98,32 @@ Sub ExecWarrior1Command
   If (code = "DAT") Then '' Check for process destruction command.
     winlose = "Warrior 1 died"
   ElseIf (code = "NOP") Then '' Check for do nothing command.
-    '' Does nothing except let the execution of warrior continue to the next address.
+    warrior1exec = warrior1exec + 1
+    address_to_wrap = warrior1exec
+    WrapAddress()
+    warrior1exec = wrapped_address
   ElseIf (code = "ADD") Then '' Check for varriable adding command.
     ADD()
   ElseIf (code = "SUB") Then '' Check for variable subtracting command.
-    SUBT()
+    SUB()
   ElseIf (code = "MUL") Then '' Check for variable muliplying command.
     MUL()
   ElseIf (code = "DIV") Then '' Check for variable dividing command.
     DIV()
+  ElseIf (code = "MOV") Then '' Check for move command.
+    MOV()
+  ElseIf (code = "JMP") Then '' Check for jump command.
+    JMP()
+  ElseIf (code = "JMZ") Then '' Check for jump if zero command.
+    JMZ()
+  ElseIf (code = "JMG") Then '' Check for jump if greater command.
+    JMG()
+  ElseIf (code = "DJN") Then '' Check for decrement and jump if not zero command.
+    DJN()
+  ElseIf (code = "SEQ") Then '' Check for skip if equal command.
+    SEQ()
+  ElseIf (code = "SNE") Then '' Check for skip if not equal command.
+    SNE()
   Else '' Catchall for unkown data
     TextWindow.WriteLine("Memory Array Error: Incompatible Data: '" + warrior1step + "'")
     TextWindow.WriteLine("Error Causes: (Incorrect Warrior Code) or (Program Error).")
@@ -117,104 +133,578 @@ EndSub
 
 Sub GetABValues
   '' Get the AValue and the BValue, also check for Type modifiers (*, #, @, etc...) for each value.
-  '' Does not have Type modifiers yet.
+
+  ' Clear previous values
   AValue = ""
   BValue = ""
-  i = 0
-  varloc = 5
-  '' AValue retrieve.
-  While (i <> 1)
-    If (Text.GetSubText(ABFetch, varloc, 1) = ",") Then
-      i = 1
-    Else
-      AValue =  Text.Append(AValue, Text.GetSubText(ABFetch, varloc, 1))
-    EndIf
-    varloc = varloc + 1
+  AMode = ""
+  BMode = ""
+
+  full_instruction = ABFetch
+  ' Assuming opcode is always 3 chars followed by a space.
+  operands_part = Text.GetSubTextToEnd(full_instruction, 5)
+
+  ' Trim leading space from operands_part
+  While (Text.GetSubText(operands_part, 1, 1) = " ")
+    operands_part = Text.GetSubTextToEnd(operands_part, 2)
   EndWhile
-  
-  i = 0
-  varloc = varloc + 1
-  '' BValue retrieve.
-  While (i <> 1)
-    If (Text.GetSubText(ABFetch, varloc, 1) = "")Then
-      i = 1
-    Else
-      BValue = Text.Append(BValue, Text.GetSubText(ABFetch, varloc, 1))
+
+  ' Find the comma to separate A and B fields
+  comma_pos = Text.GetIndexOf(operands_part, ",")
+
+  if (comma_pos > 0) then
+    AFieldStr = Text.GetSubText(operands_part, 1, comma_pos - 1)
+    BFieldStr = Text.GetSubTextToEnd(operands_part, comma_pos + 1)
+  else
+    ' Handle instructions with only one operand (like JMP)
+    AFieldStr = operands_part
+    BFieldStr = ""
+  endif
+
+  ' Trim space, a bit of a hack in SB
+  While (Text.GetSubText(AFieldStr, Text.GetLength(AFieldStr), 1) = " ")
+    AFieldStr = Text.GetSubText(AFieldStr, 1, Text.GetLength(AFieldStr) - 1)
+  EndWhile
+  While (Text.GetSubText(BFieldStr, 1, 1) = " ")
+    BFieldStr = Text.GetSubTextToEnd(BFieldStr, 2)
+  EndWhile
+
+  ' Parse A-field
+  if (AFieldStr <> "") then
+    first_char_A = Text.GetSubText(AFieldStr, 1, 1)
+    if (first_char_A = "#" or first_char_A = "$" or first_char_A = "@" or first_char_A = "*") then
+      AMode = first_char_A
+      AValue = Text.GetSubTextToEnd(AFieldStr, 2)
+    else
+      AMode = "$" ' Default to direct addressing
+      AValue = AFieldStr
+    endif
+  endif
+
+  ' Parse B-field
+  if (BFieldStr <> "") then
+    first_char_B = Text.GetSubText(BFieldStr, 1, 1)
+    if (first_char_B = "#" or first_char_B = "$" or first_char_B = "@" or first_char_B = "*") then
+      BMode = first_char_B
+      BValue = Text.GetSubTextToEnd(BFieldStr, 2)
+    else
+      BMode = "$" ' Default to direct addressing
+      BValue = BFieldStr
+    endif
+  endif
+EndSub
+
+Sub ResolveAOperand
+  A_IsImmediate = "False"
+  A_Address = -1
+  If (AMode = "#") Then
+    A_IsImmediate = "True"
+    A_ImmediateValue = AValue
+  Else
+    ' It's an address mode
+    address_to_wrap = warrior1exec + AValue
+    WrapAddress()
+    base_addr = wrapped_address
+
+    If (AMode = "$") Then ' Direct
+      A_Address = base_addr
+    ElseIf (AMode = "@") Then ' B-field indirect
+      pointer_instr = memory[base_addr]
+      ABFetch = pointer_instr
+      GetABValues()
+      address_to_wrap = base_addr + BValue ' BValue from pointer_instr
+      WrapAddress()
+      A_Address = wrapped_address
+    ElseIf (AMode = "*") Then ' A-field indirect
+      pointer_instr = memory[base_addr]
+      ABFetch = pointer_instr
+      GetABValues()
+      address_to_wrap = base_addr + AValue ' AValue from pointer_instr
+      WrapAddress()
+      A_Address = wrapped_address
     EndIf
-    varloc = varloc + 1
+  EndIf
+EndSub
+
+Sub ResolveBOperand
+  B_IsImmediate = "False"
+  B_Address = -1
+  If (BMode = "#") Then
+    B_IsImmediate = "True"
+    B_ImmediateValue = BValue
+  Else
+    address_to_wrap = warrior1exec + BValue
+    WrapAddress()
+    base_addr = wrapped_address
+
+    If (BMode = "$") Then
+      B_Address = base_addr
+    ElseIf (BMode = "@") Then
+      pointer_instr = memory[base_addr]
+      ABFetch = pointer_instr
+      GetABValues()
+      address_to_wrap = base_addr + BValue
+      WrapAddress()
+      B_Address = wrapped_address
+    ElseIf (BMode = "*") Then
+      pointer_instr = memory[base_addr]
+      ABFetch = pointer_instr
+      GetABValues()
+      address_to_wrap = base_addr + AValue
+      WrapAddress()
+      B_Address = wrapped_address
+    EndIf
+  EndIf
+EndSub
+
+Sub SEQ
+  '' Skip next instruction if instructions are equal.
+  GetABValues()
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (A_IsImmediate = "True" or B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died, SEQ cannot compare immediate values"
+    return
+  EndIf
+
+  sourceInstr = memory[A_Address]
+  destInstr = memory[B_Address]
+
+  If (sourceInstr = destInstr) Then
+    warrior1exec = warrior1exec + 2
+  Else
+    warrior1exec = warrior1exec + 1
+  EndIf
+
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub SNE
+  '' Skip next instruction if instructions are not equal.
+  GetABValues()
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (A_IsImmediate = "True" or B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died, SNE cannot compare immediate values"
+    return
+  EndIf
+  
+  sourceInstr = memory[A_Address]
+  destInstr = memory[B_Address]
+
+  If (sourceInstr <> destInstr) Then
+    warrior1exec = warrior1exec + 2
+  Else
+    warrior1exec = warrior1exec + 1
+  EndIf
+
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub DJN
+  '' Decrement B-field of target and jump if not zero.
+  GetABValues()
+
+  ' Resolve B operand (the one to decrement)
+  ResolveBOperand()
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died, DJN cannot decrement an immediate value"
+    return
+  EndIf
+
+  ' Get and decrement the B-field of the instruction at B_Address
+  instr_to_mod = memory[B_Address]
+  ABFetch = instr_to_mod
+  GetABValues() ' Parses instr_to_mod
+  old_B_val = BValue
+  new_B_val = old_B_val - 1
+
+  ' Update the instruction in memory
+  ABEdit[1] = "b"
+  ABEdit[2] = new_B_val
+  Btemp = B_Address - warrior1exec ' EditAB needs the offset
+  EditAB()
+
+  ' Conditional jump
+  If (new_B_val <> 0) Then
+    ' Condition met, now resolve jump offset from operand A.
+    If (AMode = "#") Then
+      offset = AValue
+    Else
+      ResolveAOperand()
+      If (A_IsImmediate = "True") Then return
+      instr = memory[A_Address]
+      ABFetch = instr
+      GetABValues()
+      offset = BValue
+    EndIf
+    warrior1exec = warrior1exec + offset
+  Else
+    ' Condition not met, just advance to next instruction
+    warrior1exec = warrior1exec + 1
+  EndIf
+
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub WrapAddress
+  ' Input: global "address_to_wrap"
+  ' Output: global "wrapped_address"
+  wrapped_address = address_to_wrap
+  While (wrapped_address > memorySize)
+    wrapped_address = wrapped_address - memorySize
+  EndWhile
+  While (wrapped_address < 1)
+    wrapped_address = wrapped_address + memorySize
   EndWhile
 EndSub
 
 Sub EditAB
   '' Edit A or B value at given address.
-  TempData = ""
-  EditAddress = memory[warrior1exec + Btemp]
+  '' It uses global variables:
+  '' Btemp: offset to the instruction to edit.
+  '' ABEdit[1]: "a" or "b" to specify which field to edit.
+  '' ABEdit[2]: the new value for the field.
+
+  address_to_wrap = warrior1exec + Btemp
+  WrapAddress()
+  targetAddress = wrapped_address
+
+  instructionToEdit = memory[targetAddress]
+  opcode = Text.GetSubText(instructionToEdit, 1, 3)
+
+  ' We need to parse the original A and B fields of the instruction to be edited
+  ABFetch = instructionToEdit
+  GetABValues() ' This sets global AFieldStr and BFieldStr
+  originalAField = AFieldStr
+  originalBField = BFieldStr
+
   If (ABEdit[1] = "a") Then
-    '' Edit AValue.
+    ' Edit A-field. The new value in ABEdit[2] should be the full field string.
+    newInstruction = opcode + " " + ABEdit[2] + ", " + originalBField
   Else
-    '' Edit BValue.
-    i = 0
-    readLoc = 1
-    While (i <> 1)
-      If (Text.GetSubText(EditAddress, readLoc, 1) = ",") Then
-        i = 1
-      Else
-        TempData = Text.Append(TempData, Text.GetSubText(EditAddress, readLoc, 1))
-      EndIf
-      readLoc = readLoc + 1
-    EndWhile
+    ' Edit B-field. The new value in ABEdit[2] is just a number.
+    ' The B-field in Redcode does not have a mode prefix.
+    newInstruction = opcode + " " + originalAField + ", " + ABEdit[2]
   EndIf
+
+  memory[targetAddress] = newInstruction
 EndSub
 
 Sub ADD
   '' Add command function.
   GetABValues()
-  Atemp = AValue
-  Btemp = BValue
-  ABFetch = memory[warrior1exec + Btemp]
-  GetABValues()
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died due to invalid ADD destination"
+    return
+  EndIf
+
+  ' Get source value
+  If (A_IsImmediate = "True") Then
+    sourceValue = A_ImmediateValue
+  Else
+    sourceInstr = memory[A_Address]
+    ABFetch = sourceInstr
+    GetABValues() ' This gets the B-value of the source instruction
+    sourceValue = BValue
+  EndIf
+
+  ' Get dest value
+  destInstr = memory[B_Address]
+  ABFetch = destInstr
+  GetABValues() ' This gets the B-value of the destination instruction
+  destValue = BValue
+
+  ' Calc new value
+  newValue = destValue + sourceValue
+
+  ' Update dest
   ABEdit[1] = "b"
-  ABEdit[2] = BValue + Atemp
+  ABEdit[2] = newValue
+  Btemp = B_Address - warrior1exec ' EditAB needs the offset
   EditAB()
+
+  warrior1exec = warrior1exec + 1
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
 EndSub
 
-Sub SUBT
+Sub SUB
   '' Subtract command function
   GetABValues()
-  Atemp = AValue
-  Btemp = BValue
-  ABFetch = memory[warrior1exec + Btemp]
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died due to invalid SUB destination"
+    return
+  EndIf
+
+  ' Get source value
+  If (A_IsImmediate = "True") Then
+    sourceValue = A_ImmediateValue
+  Else
+    sourceInstr = memory[A_Address]
+    ABFetch = sourceInstr
+    GetABValues()
+    sourceValue = BValue
+  EndIf
+
+  ' Get dest value
+  destInstr = memory[B_Address]
+  ABFetch = destInstr
   GetABValues()
+  destValue = BValue
+
+  ' Calc new value
+  newValue = destValue - sourceValue
+
+  ' Update dest
   ABEdit[1] = "b"
-  ABEdit[2] = BValue - Atemp
+  ABEdit[2] = newValue
+  Btemp = B_Address - warrior1exec
   EditAB()
+
+  warrior1exec = warrior1exec + 1
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
 EndSub
 
 Sub MUL
   '' Multiply command function.
   GetABValues()
-  Atemp = AValue
-  Btemp = BValue
-  ABFetch = memory[warrior1exec + Btemp]
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died due to invalid MUL destination"
+    return
+  EndIf
+
+  ' Get source value
+  If (A_IsImmediate = "True") Then
+    sourceValue = A_ImmediateValue
+  Else
+    sourceInstr = memory[A_Address]
+    ABFetch = sourceInstr
+    GetABValues()
+    sourceValue = BValue
+  EndIf
+
+  ' Get dest value
+  destInstr = memory[B_Address]
+  ABFetch = destInstr
   GetABValues()
+  destValue = BValue
+
+  ' Calc new value
+  newValue = destValue * sourceValue
+
+  ' Update dest
   ABEdit[1] = "b"
-  ABEdit[2] = BValue * Atemp
+  ABEdit[2] = newValue
+  Btemp = B_Address - warrior1exec
   EditAB()
+
+  warrior1exec = warrior1exec + 1
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
 EndSub
 
 Sub DIV
   '' Divide command function.
   GetABValues()
-  Atemp = AValue
-  Btemp = BValue
-  If (Atemp <> 0) Then
-    ABFetch = memory[warrior1exec + Btemp]
-    GetABValues()
-    ABEdit[1] = "b"
-    ABEdit[2] = BValue / Atemp
-  Else
-    ABEdit[1] = "b"
-    ABEdit[2] = 0
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died due to invalid DIV destination"
+    return
   EndIf
+
+  ' Get source value
+  If (A_IsImmediate = "True") Then
+    sourceValue = A_ImmediateValue
+  Else
+    sourceInstr = memory[A_Address]
+    ABFetch = sourceInstr
+    GetABValues()
+    sourceValue = BValue
+  EndIf
+
+  ' Get dest value
+  destInstr = memory[B_Address]
+  ABFetch = destInstr
+  GetABValues()
+  destValue = BValue
+
+  ' Calc new value
+  If (sourceValue <> 0) Then
+    newValue = Math.Floor(destValue / sourceValue)
+  Else
+    ' Division by zero kills the process
+    winlose = "Warrior 1 died due to division by zero"
+    return
+  EndIf
+
+  ' Update dest
+  ABEdit[1] = "b"
+  ABEdit[2] = newValue
+  Btemp = B_Address - warrior1exec
   EditAB()
+
+  warrior1exec = warrior1exec + 1
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub MOV
+  '' Move command function.
+  GetABValues()
+  ResolveAOperand()
+  ResolveBOperand()
+
+  If (B_IsImmediate = "True") Then
+    ' Can't move to an immediate value.
+    ' This is an error condition. For now, we'll just stop the warrior.
+    winlose = "Warrior 1 died due to invalid MOV destination"
+    return
+  EndIf
+
+  ' Get the source instruction
+  If (A_IsImmediate = "True") Then
+    ' A common interpretation of MOV with an immediate source is to treat it as MOV.I,
+    ' which copies the A-field value into the B-field of the destination.
+    ' However, a simpler interpretation for this emulator is to create a DAT instruction.
+    sourceInstr = "DAT #0, " + A_ImmediateValue
+  Else
+    sourceInstr = memory[A_Address]
+  EndIf
+
+  ' Perform the move
+  memory[B_Address] = sourceInstr
+
+  warrior1exec = warrior1exec + 1
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub JMP
+  '' Jump to a new address.
+  GetABValues()
+
+  ' Resolve the jump offset value from operand A.
+  If (AMode = "#") Then
+    offset = AValue
+  Else ' Direct, indirect etc.
+    ResolveAOperand()
+    If (A_IsImmediate = "True") Then return ' Should not happen
+
+    ' The offset is the B-field of the instruction at the target address
+    instr = memory[A_Address]
+    ABFetch = instr
+    GetABValues()
+    offset = BValue
+  EndIf
+
+  warrior1exec = warrior1exec + offset
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub JMZ
+  '' Jump if B-field of target is zero.
+  GetABValues()
+
+  ' Resolve B operand (the one to check)
+  ResolveBOperand()
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died, JMZ cannot check an immediate value"
+    return
+  EndIf
+
+  ' Check the B-field of the instruction at B_Address
+  instr_to_check = memory[B_Address]
+  ABFetch = instr_to_check
+  GetABValues() ' Parses instr_to_check
+  value_to_check = BValue
+
+  If (value_to_check = 0) Then
+    ' Condition met, now resolve jump offset from operand A.
+    If (AMode = "#") Then
+      offset = AValue
+    Else
+      ResolveAOperand()
+      If (A_IsImmediate = "True") Then return
+      instr = memory[A_Address]
+      ABFetch = instr
+      GetABValues()
+      offset = BValue
+    EndIf
+    warrior1exec = warrior1exec + offset
+  Else
+    ' Condition not met, just advance to next instruction
+    warrior1exec = warrior1exec + 1
+  EndIf
+
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
+EndSub
+
+Sub JMG
+  '' Jump if B-field of target is greater than zero.
+  GetABValues()
+
+  ' Resolve B operand (the one to check)
+  ResolveBOperand()
+  If (B_IsImmediate = "True") Then
+    winlose = "Warrior 1 died, JMG cannot check an immediate value"
+    return
+  EndIf
+
+  ' Check the B-field of the instruction at B_Address
+  instr_to_check = memory[B_Address]
+  ABFetch = instr_to_check
+  GetABValues() ' Parses instr_to_check
+  value_to_check = BValue
+
+  If (value_to_check > 0) Then
+    ' Condition met, now resolve jump offset from operand A.
+    If (AMode = "#") Then
+      offset = AValue
+    Else
+      ResolveAOperand()
+      If (A_IsImmediate = "True") Then return
+      instr = memory[A_Address]
+      ABFetch = instr
+      GetABValues()
+      offset = BValue
+    EndIf
+    warrior1exec = warrior1exec + offset
+  Else
+    ' Condition not met, just advance to next instruction
+    warrior1exec = warrior1exec + 1
+  EndIf
+
+  address_to_wrap = warrior1exec
+  WrapAddress()
+  warrior1exec = wrapped_address
 EndSub
